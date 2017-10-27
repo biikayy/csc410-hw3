@@ -1,6 +1,12 @@
 package csc410.hw3;
 
 import java.util.*;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.FileNotFoundException;
+import java.io.OutputStreamWriter;
+import java.io.BufferedWriter;
 
 import soot.Local;
 import soot.Unit;
@@ -10,51 +16,103 @@ import soot.toolkits.scalar.BackwardFlowAnalysis;
 import soot.toolkits.scalar.FlowSet;
 import soot.toolkits.scalar.ArraySparseSet;
 
-
-/*** Class to hold Upward Exposed Uses analyis. Extend appropriate class. ***/
-
-// Upward Exposed Uses is a backward flow analysis and will extend such class
-public class UpwardExposedUses extends BackwardFlowAnalysis<Unit, FlowSet<Local>>  {
+class UpwardExposedUses
+	extends BackwardFlowAnalysis<Unit, FlowSet<Local>> 
+{
 	
 	private FlowSet<Local> emptySet;
 
-	// Constructor for class
+	@SuppressWarnings("unchecked")
 	public UpwardExposedUses(DirectedGraph g) {
-			super(g);	
-			emptySet = new ArraySparseSet<Local>();	
-			doAnalysis(); }
+		// First obligation
+		super(g);
+		
+		// Create the emptyset
+		emptySet = new ArraySparseSet<Local>();
+		
+		// Second obligation
+		doAnalysis();
 
-	protected FlowSet<Local> newInitialFlow() { return new ArraySparseSet<Local>(); }
-	protected FlowSet<Local> entryInitialFlow() { return new ArraySparseSet<Local>(); }
-
-	@Override
-	protected void merge(FlowSet<Local> in1, FlowSet<Local> in2, FlowSet<Local> out) {	
-	in1.union(in2, out);
 	}
-
-	@Override
-	protected void flowThrough(FlowSet<Local> in, Unit node, FlowSet<Local> out) {
 	
-	// New set to keep track of all the writes
-	FlowSet<Local> writes = new ArraySparseSet<Local>();
 
-	// 
-	for (ValueBox def: node.getUseAndDefBoxes()) {
-		if (def.getValue() instanceof Local) writes.add((Local) def.getValue());
+	// This method performs the joining of successor nodes
+	// Since live variables is a may analysis we join by union 
+	@Override
+	protected void merge(FlowSet<Local> inSet1, 
+		FlowSet<Local> inSet2, 
+		FlowSet<Local> outSet) 
+	{
+		inSet1.union(inSet2, outSet);
 	}
 
-	out.difference(writes, in);
-
-	for (ValueBox use: node.getUseBoxes()) {
-		if (use.getValue() instanceof Local) out.add((Local) use.getValue());
-	}
-	}
 
 	@Override
-	protected void copy(FlowSet<Local> srcSet, FlowSet<Local> destSet) {
-	srcSet.copy(destSet);
+	protected void copy(FlowSet<Local> srcSet, 
+		FlowSet<Local> destSet) 
+	{
+		srcSet.copy(destSet);
+	}
+
+	
+	// Used to initialize the in and out sets for each node. In
+	// our case we build up the sets as we go, so we initialize
+	// with the empty set.
+	@Override
+	protected FlowSet<Local> newInitialFlow() {
+		return emptySet.clone();
 	}
 
 
+	// Returns FlowSet representing the initial set of the entry
+	// node. In our case the entry node is the last node and it
+	// should contain the empty set.
+	@Override
+	protected FlowSet<Local> entryInitialFlow() {
+		return emptySet.clone();
+	}
+
+	
+	// Sets the outSet with the values that flow through the 
+	// node from the inSet based on reads/writes at the node
+	// Set the outSet (entry) based on the inSet (exit)
+	@Override
+	@SuppressWarnings("unchecked")
+	protected void flowThrough(FlowSet<Local> inSet, 
+		Unit node, FlowSet<Local> outSet) throws FileNotFoundException {
+		
+		// outSet is the set at enrty of the node
+		// inSet is the set at exit of the node
+		// out <- (in - write(node)) union read(node)
+		
+		// out <- (in - write(node))
+
+		FlowSet writes = (FlowSet)emptySet.clone();
+
+		for (ValueBox def: node.getUseAndDefBoxes()) {
+			if (def.getValue() instanceof Local) {
+				writes.add(def.getValue());
+			}
+		}
+		inSet.difference(writes, outSet);
+
+		// out <- out union read(node)
+
+		File fout = new File ("exposed-uses.txt");
+		FileOutputStream fos = new FileOutputStream(fout);
+		
+		BufferedWriter bw = new BufferedWriter (new OutputStreamWriter(fos));
+		
+		for (ValueBox use: node.getUseBoxes()) {
+			if (use.getValue() instanceof Local) {
+				outSet.add((Local) use.getValue());
+				bw.write("hello");
+			}
+		}
+	}
+	
+	private void outPut (Flowset<Local> outSet)
+	
 }
+
 

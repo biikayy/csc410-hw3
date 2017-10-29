@@ -2,11 +2,8 @@ package csc410.hw3;
 
 import java.util.*;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.FileNotFoundException;
-import java.io.OutputStreamWriter;
-import java.io.BufferedWriter;
+import java.io.FileWriter;
 
 import soot.Local;
 import soot.Unit;
@@ -15,26 +12,65 @@ import soot.toolkits.graph.DirectedGraph;
 import soot.toolkits.scalar.BackwardFlowAnalysis;
 import soot.toolkits.scalar.FlowSet;
 import soot.toolkits.scalar.ArraySparseSet;
+import soot.toolkits.graph.*;
 
 class UpwardExposedUses
 	extends BackwardFlowAnalysis<Unit, FlowSet<Local>> 
 {
-	
 	private FlowSet<Local> emptySet;
 
-	@SuppressWarnings("unchecked")
-	public UpwardExposedUses(DirectedGraph g) {
+	public UpwardExposedUses(UnitGraph g) {
 		// First obligation
 		super(g);
 		
 		// Create the emptyset
 		emptySet = new ArraySparseSet<Local>();
-		
+
 		// Second obligation
 		doAnalysis();
 
+		//Print Upwards Exposed Uses variables at entry and exit of nodes.
+		try {outPut(g);}
+		catch (IOException ioe) {}
+
 	}
 	
+	private void outPut(UnitGraph g) throws IOException {
+		Iterator<Unit> unitIt = g.iterator();
+		
+				File file = new File("exposes-uses.txt");
+				file.createNewFile();
+				FileWriter writer = new FileWriter(file);
+		
+					while (unitIt.hasNext()) {
+						
+						Unit s = unitIt.next();
+				
+						writer.write(s.toString());
+			
+						
+						writer.write('\n');
+						
+							
+						FlowSet<Local> set = getFlowBefore(s);
+				
+						writer.write("\t[entry: ");
+						for (Local local: set) {
+							writer.write(local+" ");
+							writer.write('\n');
+						}
+				
+						set = getFlowAfter(s);
+							
+						writer.write("]\t[exit: ");
+							for (Local local: set) {
+								writer.write(local+" ");
+							}
+						writer.write("]");
+						writer.write('\n');
+					}
+				writer.close();
+	}
 
 	// This method performs the joining of successor nodes
 	// Since live variables is a may analysis we join by union 
@@ -77,11 +113,10 @@ class UpwardExposedUses
 	// node from the inSet based on reads/writes at the node
 	// Set the outSet (entry) based on the inSet (exit)
 	@Override
-	@SuppressWarnings("unchecked")
 	protected void flowThrough(FlowSet<Local> inSet, 
-		Unit node, FlowSet<Local> outSet) throws FileNotFoundException {
-		
-		// outSet is the set at enrty of the node
+		Unit node, FlowSet<Local> outSet) {
+
+		// outSet is the set at entry of the node
 		// inSet is the set at exit of the node
 		// out <- (in - write(node)) union read(node)
 		
@@ -98,21 +133,11 @@ class UpwardExposedUses
 
 		// out <- out union read(node)
 
-		File fout = new File ("exposed-uses.txt");
-		FileOutputStream fos = new FileOutputStream(fout);
-		
-		BufferedWriter bw = new BufferedWriter (new OutputStreamWriter(fos));
-		
 		for (ValueBox use: node.getUseBoxes()) {
 			if (use.getValue() instanceof Local) {
-				outSet.add((Local) use.getValue());
-				bw.write("hello");
+				outSet.add((Local) use.getValue());				
 			}
 		}
 	}
-	
-	private void outPut (Flowset<Local> outSet)
-	
 }
-
 

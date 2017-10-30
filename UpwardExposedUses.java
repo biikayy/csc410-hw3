@@ -8,7 +8,7 @@ import java.io.FileWriter;
 import soot.Local;
 import soot.Unit;
 import soot.ValueBox;
-import soot.toolkits.graph.DirectedGraph;
+import soot.toolkits.graph.UnitGraph;
 import soot.toolkits.scalar.BackwardFlowAnalysis;
 import soot.toolkits.scalar.FlowSet;
 import soot.toolkits.scalar.ArraySparseSet;
@@ -17,60 +17,84 @@ import soot.toolkits.graph.*;
 class UpwardExposedUses
 	extends BackwardFlowAnalysis<Unit, FlowSet<Local>> 
 {
+	// the empty set
 	private FlowSet<Local> emptySet;
+	private FlowSet<Local> old;
 
+	// the original graph
+	private UnitGraph originalGraph = null;
+
+	//constructor
 	public UpwardExposedUses(UnitGraph g) {
 		// First obligation
 		super(g);
+
+		this.originalGraph = g;
 		
 		// Create the emptyset
 		emptySet = new ArraySparseSet<Local>();
-
+		old = new ArraySparseSet<Local>();
+		
 		// Second obligation
 		doAnalysis();
 
 		//Print Upwards Exposed Uses variables at entry and exit of nodes.
 		try {outPut(g);}
 		catch (IOException ioe) {}
-
 	}
 	
 	private void outPut(UnitGraph g) throws IOException {
+		// Create File
+		File file = new File("exposed-uses.txt");
+		file.createNewFile();
+		FileWriter writer = new FileWriter(file);
+
+		// Iterator for graph to insert all node in list
+		Iterator<Unit> arrayIt = g.iterator();
+		
+		// List of all nodes in graph
+		List<Unit> l = new ArrayList();
+		arrayIt.next();	
+		while (arrayIt.hasNext()) {
+			l.add(arrayIt.next());
+		}
+
+		// Iterator for graph for flowAnalysis
 		Iterator<Unit> unitIt = g.iterator();
-		
-				File file = new File("exposes-uses.txt");
-				file.createNewFile();
-				FileWriter writer = new FileWriter(file);
-		
-					while (unitIt.hasNext()) {
-						
-						Unit s = unitIt.next();
-				
-						writer.write(s.toString());
+		unitIt.next();
+
+		while (unitIt.hasNext()) {
+			Unit n = unitIt.next();
 			
-						
-						writer.write('\n');
-						
-							
-						FlowSet<Local> set = getFlowBefore(s);
-				
-						writer.write("\t[entry: ");
-						for (Local local: set) {
-							writer.write(local+" ");
-							writer.write('\n');
-						}
-				
-						set = getFlowAfter(s);
-							
-						writer.write("]\t[exit: ");
-							for (Local local: set) {
-								writer.write(local+" ");
-							}
-						writer.write("]");
-						writer.write('\n');
-					}
-				writer.close();
-	}
+			// list of all paths from node s to any node in graph that goes from def to use
+			List<List<Unit>>  allPaths = new ArrayList();
+			for (Unit u: l) {
+				List<Unit> path_s_u = new ArrayList();
+				path_s_u = g.getExtendedBasicBlockPathBetween(n, u);
+				if (!(path_s_u==null)) {
+					allPaths.add(path_s_u);
+				}
+			}
+			
+			// All UEU at exit of node
+			FlowSet<Local> ueu_set = getFlowAfter(n);
+
+			// Writing to file
+			writer.write(ueu_set.toString());
+			for (Local ueu : ueu_set) {
+				for (List<Unit> a_path: allPaths) {
+					// node u
+					writer.write(a_path.get(1).toString() + '\n');
+					//node v
+					writer.write(n.toString() + '\n');
+					// ueu
+					writer.write(ueu.toString() + '\n');	
+				}
+			}
+		}
+		writer.close();
+	}	
+
 
 	// This method performs the joining of successor nodes
 	// Since live variables is a may analysis we join by union 
@@ -116,28 +140,35 @@ class UpwardExposedUses
 	protected void flowThrough(FlowSet<Local> inSet, 
 		Unit node, FlowSet<Local> outSet) {
 
-		// outSet is the set at entry of the node
-		// inSet is the set at exit of the node
-		// out <- (in - write(node)) union read(node)
-		
-		// out <- (in - write(node))
-
-		FlowSet writes = (FlowSet)emptySet.clone();
-
-		for (ValueBox def: node.getUseAndDefBoxes()) {
+	    // write	
+		FlowSet<Local> writes = emptySet.clone();
+		for (ValueBox def: node.getDefBoxes()) {
 			if (def.getValue() instanceof Local) {
-				writes.add(def.getValue());
+				writes.add((Local) def.getValue());
+				old.add((Local) def.getValue());
 			}
 		}
-		inSet.difference(writes, outSet);
 
-		// out <- out union read(node)
-
+		// read
+		FlowSet<Local> reads = emptySet.clone();
 		for (ValueBox use: node.getUseBoxes()) {
 			if (use.getValue() instanceof Local) {
-				outSet.add((Local) use.getValue());				
+				reads.add((Local) use.getValue());
 			}
 		}
-	}
-}
 
+		// inSet = (in - write(node)) union read)
+
+		// in - write(node)
+		outSet.difference(writes, inSet);
+		// union read)
+		inSet.union(reads);
+
+		// new writes in program
+		FlowSet<Local> newvar = writes.clone();
+		for (Local oldvar: this.old) {
+			newvar.remove(oldvar);
+		}
+		outSet.union(newvar);
+		}
+}
